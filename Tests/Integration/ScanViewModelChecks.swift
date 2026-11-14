@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// Exercises the production view model on the main actor without mocking filesystem work.
 @main
@@ -42,9 +43,39 @@ struct ScanViewModelChecks {
         try await waitForScan(model)
         try require(model.snapshot?.root.name == "second", "Rescan used failed target")
         try require(!model.canTrash, "Scan root was eligible for Trash")
+        let refreshedFolder = model.snapshot!.nodes.first { $0.name == "nested" }!
+        model.zoom(to: refreshedFolder.id)
+        model.selectedID = model.snapshot!.nodes.first { $0.name == "inside" }!.id
+        try Data(repeating: 1, count: 20).write(to: nested.appendingPathComponent("inside"))
+        model.refreshSelected()
+        try await waitForScan(model)
+        try require(model.selected?.name == "inside" && model.selected?.logicalSize == 20, "Refresh lost selection or file size")
+        try require(model.snapshot!.nodes[model.currentRoot].name == "nested", "Refresh lost directory zoom")
+        try require(model.snapshot?.root.logicalSize == 21, "Refresh failed to update ancestor totals")
+        try manager.removeItem(at: nested.appendingPathComponent("inside"))
+        model.refreshSelected()
+        try await waitForScan(model)
+        try require(model.selected?.name == "nested" && model.snapshot?.root.logicalSize == 1, "Refresh of removed item failed to select surviving folder")
+        let coordinator = FileTreeView.Coordinator(model: model)
+        let outline = NSOutlineView()
+        outline.addTableColumn(NSTableColumn(identifier: .init("name")))
+        outline.dataSource = coordinator
+        outline.delegate = coordinator
+        coordinator.outline = outline
+        coordinator.refresh()
+        let rootMenu = coordinator.menu(for: 0)!
+        try require(rootMenu.items.last?.isEnabled == false, "Context menu allowed trashing scan root")
+        let outsideID = model.snapshot!.nodes.first { $0.name == "outside" }!.id
+        let itemMenu = coordinator.menu(for: outline.row(forItem: NSNumber(value: outsideID)))!
+        try require(model.selectedID == outsideID && itemMenu.items.last?.isEnabled == true, "Context menu did not target clicked item")
+        try require(coordinator.menu(for: -1) == nil, "Empty area produced an item menu")
+        model.scan(first)
+        let busyMenu = coordinator.menu(for: 0)!
+        try require(!busyMenu.items[0].isEnabled && !busyMenu.items[2].isEnabled, "Busy menu allowed refresh or Trash")
+        model.cancel()
         try await checkPrivilegeTransport(snapshot: snapshot)
         if ProcessInfo.processInfo.environment["MACDIRSTAT_REQUIRE_SIGNED_TESTS"] == "1" { try await checkSignedXPC() }
-        print("PASS: scan lifecycle, navigation, root protection, privileged transport round-trip and invalid authorization rejection")
+        print("PASS: scan lifecycle, refresh totals and selection, context menu targeting and guards, navigation, root protection, privileged transport and invalid authorization rejection")
     }
 
     static func checkPrivilegeTransport(snapshot: ScanSnapshot) async throws {

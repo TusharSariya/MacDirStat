@@ -9,7 +9,10 @@ struct FileTreeView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
-        let outline = NSOutlineView()
+        let outline = ContextOutlineView()
+        outline.contextMenu = { [weak coordinator = context.coordinator] row in
+            coordinator?.menu(for: row)
+        }
         let name = NSTableColumn(identifier: .init("name"))
         name.title = "Name"
         name.width = 240
@@ -145,5 +148,53 @@ struct FileTreeView: NSViewRepresentable {
             guard let outline, let id = (outline.item(atRow: outline.clickedRow) as? NSNumber)?.intValue else { return }
             model.zoom(to: id)
         }
+
+        func menu(for row: Int) -> NSMenu? {
+            guard let outline, let id = (outline.item(atRow: row) as? NSNumber)?.intValue,
+                  let snapshot = model.snapshot, snapshot.nodes.indices.contains(id) else { return nil }
+            outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            model.selectedID = id
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            for (title, action, enabled) in [
+                ("Refresh Size", #selector(refreshItem), !model.isScanning && !model.isFileOperation),
+                ("Reveal in Finder", #selector(revealItem), true),
+                ("Move to Trash…", #selector(trashItem), model.canTrash)
+            ] {
+                let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+                item.target = self
+                item.isEnabled = enabled
+                item.representedObject = MenuSelection(id: id, date: snapshot.scannedAt)
+                menu.addItem(item)
+            }
+            return menu
+        }
+
+        private struct MenuSelection { let id: Int; let date: Date }
+        private func selectTarget(_ sender: NSMenuItem) -> Bool {
+            guard let target = sender.representedObject as? MenuSelection,
+                  model.snapshot?.scannedAt == target.date else { return false }
+            model.selectedID = target.id
+            return true
+        }
+        @objc private func refreshItem(_ sender: NSMenuItem) {
+            guard selectTarget(sender), !model.isScanning, !model.isFileOperation else { return }
+            model.refreshSelected()
+        }
+        @objc private func revealItem(_ sender: NSMenuItem) {
+            if selectTarget(sender) { model.reveal() }
+        }
+        @objc private func trashItem(_ sender: NSMenuItem) {
+            if selectTarget(sender) { model.trashSelected() }
+        }
+    }
+}
+
+/// Resolve the pointer's row, including Control-click; empty space has no item actions.
+private final class ContextOutlineView: NSOutlineView {
+    var contextMenu: ((Int) -> NSMenu?)?
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        return row >= 0 ? contextMenu?(row) : nil
     }
 }

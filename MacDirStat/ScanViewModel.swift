@@ -57,8 +57,10 @@ final class ScanViewModel: ObservableObject {
         }
     }
 
-    func scan(_ url: URL, elevated: Bool = false) {
+    func scan(_ url: URL, elevated: Bool = false, preservingView: Bool = false) {
         guard !isFileOperation else { return }
+        let selectedURL = preservingView ? selected?.url : nil
+        let zoomURL = preservingView ? snapshot?.nodes[currentRoot].url : nil
         cancel()
         lastRequestedURL = url
         if snapshot == nil { scanURL = url }
@@ -96,8 +98,8 @@ final class ScanViewModel: ObservableObject {
                     self.snapshot = result
                     self.logicalSummary = logical
                     self.allocatedSummary = allocated
-                    self.currentRoot = 0
-                    self.selectedID = 0
+                    self.currentRoot = result.nodes.first { $0.url == zoomURL }?.id ?? 0
+                    self.selectedID = result.nodes.first { $0.url == selectedURL }?.id ?? self.currentRoot
                     self.status = "\(result.root.descendantCount.formatted()) items · \(String(format: "%.2f", result.elapsed)) seconds"
                     self.isScanning = false
                 } catch is CancellationError {
@@ -118,6 +120,12 @@ final class ScanViewModel: ObservableObject {
     }
 
     func rescan() { if let scanURL { scan(scanURL, elevated: resultIsElevated) } }
+
+    /// Recompute the whole snapshot so parent totals, sorting and the treemap agree.
+    func refreshSelected() {
+        guard selected != nil, !isScanning, !isFileOperation, let scanURL else { return }
+        scan(scanURL, elevated: resultIsElevated, preservingView: true)
+    }
 
     func refreshHelperStatus() { helperStatus = ElevatedService.statusDescription }
 

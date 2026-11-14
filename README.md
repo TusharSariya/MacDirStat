@@ -31,6 +31,8 @@ Click an outline row or treemap tile to select it. Double-click a folder in the 
 
 ## Implemented
 
+Right-click (or Control-click) any file or folder in the tree for **Refresh Size**, **Reveal in Finder**, and **Move to Trash…**. Trashing a folder includes its contents and asks for confirmation; the scan root is protected. Refresh Size rescans the original scan root so all parent totals and the treemap stay consistent, retaining the selected item and zoom when they still exist. Refresh and Trash are disabled while a scan or file operation is running.
+
 - Background metadata-only traversal, throttled progress and cancellation.
 - Hidden files and package contents included; symbolic links never followed.
 - Cached directory totals and precomputed sort orders, sparse-file allocation reporting, and bounded scan-issue reporting.

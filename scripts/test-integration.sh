@@ -5,6 +5,7 @@ test_dir=$(mktemp -d /tmp/MacDirStat-integration.XXXXXX)
 trap 'rm -rf "$test_dir"' EXIT
 xcrun swiftc -swift-version 6 -parse-as-library \
   MacDirStat/Core/*.swift MacDirStat/Privileged/*.swift MacDirStat/ScanViewModel.swift \
+  MacDirStat/FileTreeView.swift MacDirStat/DiskAppearance.swift \
   PrivilegedHelper/ScanSession.swift Tests/Integration/ScanViewModelChecks.swift \
   -o "$test_dir/checks"
 if [[ $# -eq 1 ]]; then
