@@ -37,7 +37,7 @@ Right-click (or Control-click) any file or folder in the tree for **Refresh Size
 - Hidden files and package contents included; symbolic links never followed.
 - Cached directory totals and precomputed sort orders, sparse-file allocation reporting, and bounded scan-issue reporting.
 - Native outline, linked selection, folder navigation, file details and type totals.
-- Background squarified layout with bounded tile count; very small items are grouped visually and remain individually accessible in the outline.
+- Native Canvas treemap with a modern file-type palette, subtle gradient depth, named folder boundaries and a distinct disk-image category. Detail budgets are reserved across sibling folders so a single branch cannot consume the whole map. Grouped contents show their actual type composition and byte totals; double-click to explore. Selection outlines a folder once, and selecting the root adds no repeated borders. The existing three-pane window arrangement is preserved.
 - Finder reveal and confirmed native Move to Trash off the main thread. The scan root cannot be trashed. Identity checks refuse entries or ancestors replaced since scanning. Successful moves trigger a rescan.
 
 ## Filesystem semantics and limitations

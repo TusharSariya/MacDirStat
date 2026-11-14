@@ -125,7 +125,7 @@ struct FileDetailView: View {
                         HStack {
                             Circle().fill(summary.type.color).frame(width: 8, height: 8)
                             VStack(alignment: .leading) {
-                                Text(summary.type.rawValue.capitalized)
+                                Text(summary.type.displayName)
                                 Text("\(summary.count.formatted()) \(summary.count == 1 ? "file" : "files")").foregroundStyle(.secondary)
                             }
                             Spacer()

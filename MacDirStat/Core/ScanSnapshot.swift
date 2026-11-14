@@ -112,7 +112,7 @@ struct TypeSummary: Identifiable, Sendable, Codable {
 }
 
 enum DiskFileType: String, CaseIterable, Sendable, Codable {
-    case video, audio, image, document, code, archive, other
+    case video, audio, image, document, code, archive, diskImage, other
 
     static func classify(_ url: URL) -> Self {
         switch url.pathExtension.lowercased() {
@@ -121,7 +121,8 @@ enum DiskFileType: String, CaseIterable, Sendable, Codable {
         case "jpg", "jpeg", "png", "gif", "heic", "tiff", "webp", "raw", "cr2", "svg": return .image
         case "pdf", "txt", "md", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pages", "numbers", "epub": return .document
         case "swift", "m", "h", "c", "cpp", "rs", "go", "js", "ts", "tsx", "jsx", "py", "rb", "java", "json", "html", "css", "yaml", "yml", "sh": return .code
-        case "zip", "gz", "tar", "bz2", "xz", "7z", "rar", "dmg", "iso", "xip", "pkg": return .archive
+        case "zip", "gz", "tar", "bz2", "xz", "7z", "rar", "xip", "pkg": return .archive
+        case "img", "dmg", "iso", "qcow2", "vhd", "vhdx", "vmdk", "sparseimage", "sparsebundle": return .diskImage
         default: return .other
         }
     }

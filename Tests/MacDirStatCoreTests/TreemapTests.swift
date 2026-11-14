@@ -70,6 +70,49 @@ final class TreemapTests: XCTestCase {
         XCTAssertEqual(tiles.reduce(0) { $0 + $1.rect.width * $1.rect.height }, 700_000, accuracy: 0.01)
     }
 
+    func testSiblingBudgetsAndAggregateComposition() {
+        func node(_ id: Int, _ parent: Int?, _ directory: Bool, _ bytes: Int64, _ type: DiskFileType = .code) -> DiskNode {
+            DiskNode(id: id, parent: parent, url: URL(fileURLWithPath: "/fixture/\(id)"),
+                     isDirectory: directory, isSymbolicLink: false, modified: nil,
+                     fileType: type, logicalSize: bytes, allocatedSize: bytes)
+        }
+        var nodes = [node(0, nil, true, 2000)]
+        for _ in 0..<2 {
+            let folder = nodes.count
+            nodes.append(node(folder, 0, true, 1000))
+            nodes[0].children.append(folder)
+            for index in 0..<100 {
+                let id = nodes.count
+                nodes.append(node(id, folder, false, 10, index % 2 == 0 ? .video : .image))
+                nodes[folder].children.append(id)
+            }
+            nodes[folder].descendantCount = 100
+        }
+        let snapshot = ScanSnapshot(nodes: nodes, issues: [], issueCount: 0, elapsed: 0, scannedAt: Date())
+        let scene = DiskTreemapLayout.scene(snapshot: snapshot, root: 0, metric: .logical,
+            frame: CGRect(x: 0, y: 0, width: 1200, height: 800), limit: 20)
+        XCTAssertLessThanOrEqual(scene.tiles.count, 20)
+        XCTAssertEqual(scene.tiles.reduce(0) { $0 + $1.bytes }, 2000)
+        for folder in nodes[0].children {
+            XCTAssertTrue(scene.tiles.contains { !$0.isAggregate && nodes[$0.nodeID].parent == folder })
+            let aggregates = scene.tiles.filter { $0.isAggregate && $0.nodeID == folder }
+            XCTAssertFalse(aggregates.isEmpty)
+            for tile in aggregates {
+                XCTAssertEqual(tile.composition.reduce(0) { $0 + $1.bytes }, tile.bytes)
+                XCTAssertEqual(tile.composition.reduce(0) { $0 + $1.count }, tile.representedIDs.count)
+                XCTAssertEqual(Set(tile.composition.map(\.type)), [.video, .image])
+            }
+        }
+        XCTAssertEqual(scene.tiles.reduce(0) { $0 + $1.rect.width * $1.rect.height }, 960_000, accuracy: 0.01)
+    }
+
+    func testDiskImageClassificationAndZeroBudget() {
+        XCTAssertEqual(DiskFileType.classify(URL(fileURLWithPath: "/rootfs.img")), .diskImage)
+        XCTAssertEqual(DiskFileType.classify(URL(fileURLWithPath: "/Disk.QCOW2")), .diskImage)
+        XCTAssertTrue(DiskTreemapLayout.make(snapshot: snapshot(count: 1), root: 0, metric: .logical,
+            frame: CGRect(x: 0, y: 0, width: 100, height: 100), limit: 0).isEmpty)
+    }
+
     func testEmptyFrameDoesNotProduceInvalidRectangles() {
         XCTAssertTrue(DiskTreemapLayout.make(snapshot: snapshot(count: 1), root: 0, metric: .logical, frame: .zero).isEmpty)
     }

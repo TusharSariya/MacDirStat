@@ -2,8 +2,9 @@ import SwiftUI
 
 struct TreemapView: View {
     @ObservedObject var model: ScanViewModel
-    @State private var tiles: [DiskTile] = []
-    @State private var hovered: DiskTile?
+    @Environment(\.colorScheme) private var scheme
+    @State private var scene = DiskScene()
+    @State private var hoveredIndex: Int?
     @State private var displayedKey: LayoutKey?
 
     private struct LayoutKey: Equatable {
@@ -16,81 +17,125 @@ struct TreemapView: View {
     var body: some View {
         GeometryReader { geometry in
             let key = LayoutKey(date: model.snapshot?.scannedAt, root: model.currentRoot, metric: model.metric, size: geometry.size)
-            let visibleTiles = displayedKey == key ? tiles : []
-            ZStack(alignment: .topLeading) {
+            let tiles = displayedKey == key ? scene.tiles : []
+            ZStack(alignment: .bottomLeading) {
                 Canvas { context, _ in
                     guard let snapshot = model.snapshot else { return }
-                    for tile in visibleTiles {
-                        guard snapshot.nodes.indices.contains(tile.nodeID) else { continue }
+                    let headers = scene.folders.filter { folder in
+                        folder.depth == 1 && folder.rect.width > 128 && folder.rect.height > 93 &&
+                        !tiles.contains { $0.nodeID == folder.nodeID && $0.rect == folder.rect }
+                    }.map { CGRect(x: $0.rect.minX, y: $0.rect.minY, width: $0.rect.width, height: 48) }
+                    for (index, tile) in tiles.enumerated() {
                         let node = snapshot.nodes[tile.nodeID]
-                        let inset = tile.rect.insetBy(dx: 0.5, dy: 0.5)
-                        guard inset.width > 0, inset.height > 0 else { continue }
-                        let selected = model.selectedID.map { id in
-                            snapshot.nodes.indices.contains(id) &&
-                            tile.nodeID >= id && tile.nodeID <= id + snapshot.nodes[id].descendantCount
-                        } ?? false
-                        let color = node.fileType.color.opacity(hovered?.nodeID == tile.nodeID ? 0.95 : 0.75)
-                        context.fill(Path(inset), with: .color(color))
-                        if selected {
-                            context.stroke(Path(inset.insetBy(dx: 1, dy: 1)), with: .color(.primary), lineWidth: 2)
+                        let box = tile.rect.insetBy(dx: 0.6, dy: 0.6)
+                        guard box.width > 0, box.height > 0 else { continue }
+                        if tile.isAggregate, tile.bytes > 0 {
+                            var x = box.minX
+                            for part in tile.composition where part.bytes > 0 {
+                                let width = box.width * Double(part.bytes) / Double(tile.bytes)
+                                paint(CGRect(x: x, y: box.minY, width: width, height: box.height), color: part.type.color, in: &context)
+                                x += width
+                            }
+                        } else { paint(box, color: node.fileType.color, in: &context) }
+                        if hoveredIndex == index {
+                            context.stroke(Path(box.insetBy(dx: 1, dy: 1)), with: .color(.white.opacity(0.8)), lineWidth: 1)
                         }
-                        if inset.width > 65, inset.height > 30 {
-                            let label = tile.groupedCount > 0 ? "\(tile.groupedCount) smaller items" : node.name
-                            let text = Text(label).font(.system(size: 11, weight: .medium)).foregroundColor(.white)
-                            context.draw(context.resolve(text), in: inset.insetBy(dx: 5, dy: 5))
+                        let labelRect = CGRect(x: box.minX, y: box.minY, width: box.width, height: 44)
+                        if box.width > 100, box.height > 65, !headers.contains(where: { $0.intersects(labelRect) }) {
+                            let remainder = tile.isAggregate && tile.representedIDs != [tile.nodeID]
+                            let title = remainder ? "Other items in \(node.name)" : node.name
+                            label(title, subtitle: "\(formatBytes(tile.bytes))\(tile.isAggregate ? " · grouped" : "")", rect: box, context: &context)
+                        }
+                    }
+                    // Only label immediate folder groups. Deeper nesting remains visible as fine boundaries.
+                    if displayedKey == key {
+                        for folder in scene.folders where folder.nodeID != model.currentRoot && folder.depth <= 3 {
+                            let box = folder.rect.insetBy(dx: 1.5, dy: 1.5)
+                            guard box.width > 12, box.height > 12 else { continue }
+                            context.stroke(Path(box), with: .color(.black.opacity(folder.depth == 1 ? 0.55 : 0.22)), lineWidth: folder.depth == 1 ? 2 : 1)
+                            if folder.depth == 1, box.width > 125, box.height > 90,
+                               !tiles.contains(where: { $0.nodeID == folder.nodeID && $0.rect == folder.rect }) {
+                                let node = snapshot.nodes[folder.nodeID]
+                                label(node.name, subtitle: formatBytes(node.bytes(model.metric)), rect: box, context: &context)
+                            }
+                        }
+                        if let id = model.selectedID, id != model.currentRoot {
+                            let selection = snapshot.nodes[id].isDirectory
+                                ? scene.folders.first(where: { $0.nodeID == id })?.rect
+                                : tiles.first(where: { $0.nodeID == id && !$0.isAggregate })?.rect
+                            if let selection {
+                                let path = Path(selection.insetBy(dx: 2, dy: 2))
+                                context.stroke(path, with: .color(.black.opacity(0.65)), lineWidth: 5)
+                                context.stroke(path, with: .color(.white), lineWidth: 2)
+                            }
                         }
                     }
                 }
-                .accessibilityLabel("Disk usage treemap. Use the file outline to select files with the keyboard.")
+                .accessibilityLabel("Disk usage by file type. Named folder groups contain their files. Use the file outline for keyboard navigation.")
                 .onContinuousHover { phase in
                     switch phase {
-                    case .active(let location): hovered = visibleTiles.first { $0.rect.contains(location) }
-                    case .ended: hovered = nil
+                    case .active(let point): hoveredIndex = tiles.firstIndex { $0.rect.contains(point) }
+                    case .ended: hoveredIndex = nil
                     }
                 }
-                .onTapGesture(count: 2) { location in
-                    guard let tile = visibleTiles.first(where: { $0.rect.contains(location) }),
-                          let snapshot = model.snapshot else { return }
-                    guard snapshot.nodes.indices.contains(tile.nodeID) else { return }
+                .onTapGesture(count: 2) { point in
+                    guard let tile = tiles.first(where: { $0.rect.contains(point) }), let snapshot = model.snapshot else { return }
                     let node = snapshot.nodes[tile.nodeID]
                     model.zoom(to: node.isDirectory ? node.id : node.parent ?? 0)
                 }
-                .onTapGesture { location in
-                    model.selectedID = visibleTiles.first { $0.rect.contains(location) }?.nodeID
+                .onTapGesture { point in
+                    model.selectedID = tiles.first(where: { $0.rect.contains(point) })?.nodeID
                 }
-                if displayedKey == key, let hovered, let snapshot = model.snapshot, snapshot.nodes.indices.contains(hovered.nodeID) {
-                    let node = snapshot.nodes[hovered.nodeID]
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(hovered.groupedCount > 0 ? "\(hovered.groupedCount) items grouped for display" : node.name).fontWeight(.semibold)
-                        if hovered.groupedCount == 0 { Text(formatBytes(node.bytes(model.metric))) }
-                        Text(node.url.path).lineLimit(2).truncationMode(.middle)
+                if let index = hoveredIndex, tiles.indices.contains(index), let snapshot = model.snapshot {
+                    let tile = tiles[index]
+                    let node = snapshot.nodes[tile.nodeID]
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(node.name).fontWeight(.semibold)
+                        Text("\(formatBytes(tile.bytes))\(tile.isAggregate ? " · grouped contents · double-click to explore" : "")")
+                        Text(node.url.path).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                        if tile.isAggregate {
+                            Text(tile.composition.prefix(3).map { "\($0.type.displayName) \(formatBytes($0.bytes))" }.joined(separator: " · "))
+                                .foregroundStyle(.secondary).lineLimit(2)
+                        }
                     }
-                    .font(.caption)
-                    .padding(8)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-                    .padding(8)
-                    .allowsHitTesting(false)
+                    .font(.caption).padding(10)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .padding(10).allowsHitTesting(false)
                 }
                 if displayedKey != key {
-                    ProgressView("Laying out files…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if visibleTiles.isEmpty {
+                    ProgressView("Laying out files…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if tiles.isEmpty {
                     ContentUnavailableView("No sized files", systemImage: "square.dashed",
                         description: Text("This folder is empty, unreadable, or contains only zero-byte files for the selected size measure."))
                 }
             }
             .task(id: key) {
-                hovered = nil
-                tiles = []
-                guard let snapshot = model.snapshot else { tiles = []; return }
+                hoveredIndex = nil
+                guard let snapshot = model.snapshot else { return }
                 let task = Task.detached(priority: .userInitiated) {
-                    DiskTreemapLayout.make(snapshot: snapshot, root: key.root, metric: key.metric,
-                                           frame: CGRect(origin: .zero, size: key.size))
+                    DiskTreemapLayout.scene(snapshot: snapshot, root: key.root, metric: key.metric,
+                        frame: CGRect(origin: .zero, size: key.size))
                 }
                 let result = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
-                if !Task.isCancelled { tiles = result; displayedKey = key }
+                if !Task.isCancelled { scene = result; displayedKey = key }
             }
         }
         .background(Color(nsColor: .underPageBackgroundColor))
+    }
+
+    private func paint(_ rect: CGRect, color: Color, in context: inout GraphicsContext) {
+        context.fill(Path(rect), with: .color(color))
+        context.fill(Path(rect), with: .linearGradient(Gradient(colors: [.white.opacity(scheme == .dark ? 0.12 : 0.18), .clear, .black.opacity(0.18)]),
+            startPoint: CGPoint(x: rect.minX, y: rect.minY), endPoint: CGPoint(x: rect.maxX, y: rect.maxY)))
+    }
+
+    private func label(_ title: String, subtitle: String, rect: CGRect, context: inout GraphicsContext) {
+        let band = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: 44)
+        context.fill(Path(band), with: .linearGradient(Gradient(colors: [.black.opacity(0.65), .black.opacity(0.28)]),
+            startPoint: CGPoint(x: band.midX, y: band.minY), endPoint: CGPoint(x: band.midX, y: band.maxY)))
+        context.draw(Text(title).font(.system(size: 11, weight: .semibold)).foregroundColor(.white),
+            in: CGRect(x: band.minX + 7, y: band.minY + 5, width: band.width - 14, height: 15))
+        context.draw(Text(subtitle).font(.system(size: 10)).foregroundColor(.white.opacity(0.85)),
+            in: CGRect(x: band.minX + 7, y: band.minY + 23, width: band.width - 14, height: 13))
     }
 }
