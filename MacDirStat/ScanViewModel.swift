@@ -80,7 +80,7 @@ final class ScanViewModel: ObservableObject {
             if elevated {
                 snapshot = try await ElevatedScanClient.scan(url) { channel.continuation.yield($0) }
             } else {
-                snapshot = try DiskScanner.scan(url) { channel.continuation.yield($0) }
+                snapshot = try await ParallelDiskScanner.scan(url) { channel.continuation.yield($0) }
             }
             return (snapshot, snapshot.typeSummary(metric: .logical), snapshot.typeSummary(metric: .allocated))
         }

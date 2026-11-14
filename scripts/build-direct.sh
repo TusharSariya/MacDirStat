@@ -21,7 +21,7 @@ app="$derived/Build/Products/Release/MacDirStat.app"
 helper="$app/Contents/Library/LaunchServices/MacDirStatScanner"
 mkdir -p "${helper:h}" "$app/Contents/Library/LaunchDaemons"
 xcrun swiftc -swift-version 6 -O -target "$(uname -m)-apple-macos14.0" \
-  MacDirStat/Core/{ScanSnapshot,FileIdentity,DiskScanner}.swift \
+  MacDirStat/Core/{ScanSnapshot,FileIdentity,DiskScanner,NativeDiskScanner,ParallelDiskScanner}.swift \
   MacDirStat/Privileged/{ElevatedProtocol,ScanAuthorization,PeerSigning}.swift \
   PrivilegedHelper/*.swift -o "$helper"
 cp PrivilegedHelper/tushar.MacDirStat.Scanner.plist "$app/Contents/Library/LaunchDaemons/"

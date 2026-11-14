@@ -23,7 +23,7 @@ final class ScanSession: NSObject, ElevatedScannerProtocol, @unchecked Sendable 
             try ScanAuthorization.verify(authorization)
             let worker = Task.detached(priority: .userInitiated) { [self] in
                 do {
-                    let snapshot = try DiskScanner.scan(root) { [self] value in
+                    let snapshot = try await ParallelDiskScanner.scan(root) { [self] value in
                         lock.withLock { latest = value }
                     }
                     try Task.checkCancellation()

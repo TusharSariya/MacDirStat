@@ -76,7 +76,7 @@ struct DiskNode: Identifiable, Sendable, Codable {
     let name: String
 
     init(id: Int, parent: Int?, url: URL, isDirectory: Bool, isSymbolicLink: Bool,
-         modified: Date?, fileType: DiskFileType, logicalSize: Int64, allocatedSize: Int64) {
+         modified: Date?, fileType: DiskFileType, logicalSize: Int64, allocatedSize: Int64, cachedName: String? = nil) {
         self.id = id
         self.parent = parent
         self.url = url
@@ -86,8 +86,11 @@ struct DiskNode: Identifiable, Sendable, Codable {
         self.fileType = fileType
         self.logicalSize = logicalSize
         self.allocatedSize = allocatedSize
-        let component = url.lastPathComponent
-        self.name = component.isEmpty ? url.path : component
+        if let cachedName { self.name = cachedName }
+        else {
+            let component = url.lastPathComponent
+            self.name = component.isEmpty ? url.path : component
+        }
     }
     func bytes(_ metric: SizeMetric) -> Int64 { metric == .logical ? logicalSize : allocatedSize }
 }

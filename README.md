@@ -33,7 +33,7 @@ Click an outline row or treemap tile to select it. Double-click a folder in the 
 
 Right-click (or Control-click) any file or folder in the tree for **Refresh Size**, **Reveal in Finder**, and **Move to Trash…**. Trashing a folder includes its contents and asks for confirmation; the scan root is protected. Refresh Size rescans the original scan root so all parent totals and the treemap stay consistent, retaining the selected item and zoom when they still exist. Refresh and Trash are disabled while a scan or file operation is running.
 
-- Background metadata-only traversal, throttled progress and cancellation.
+- Native metadata-only traversal with up to four concurrent subtree workers, throttled progress and cancellation. Darwin FTS reuses filesystem metadata; a deterministic merge preserves tree navigation and sizes.
 - Hidden files and package contents included; symbolic links never followed.
 - Cached directory totals and precomputed sort orders, sparse-file allocation reporting, and bounded scan-issue reporting.
 - Native outline, linked selection, folder navigation, file details and type totals.
@@ -48,9 +48,22 @@ Right-click (or Control-click) any file or folder in the tree for **Refresh Size
 - Inaccessible descendants are skipped and reported. Totals are partial when issues exist. An inaccessible root fails explicitly. Only the first 500 detailed errors are retained.
 - macOS privacy controls and Unix ownership permissions are separate. Full Disk Access must be granted by the user in System Settings when needed. Root privileges do not bypass all macOS privacy protections.
 - Optional administrator-assisted scanning is implemented in the signed direct build described below. Its real system authorization and privileged filesystem flow still need end-to-end verification. The GUI runs as the current user; it never invokes sudo or elevates file deletion.
-- The current tree is retained in memory. Local release profiling scanned 167,226 Xcode bundle entries in 2.47 seconds with approximately 211 MB peak test-process memory; this is a warm local measurement, not a guarantee for other disks. The treemap is limited to 6,000 tiles and 64 nested layout levels, grouping smaller items when necessary.
+- The current tree is retained in memory. The current four-worker benchmark scans 167,226 Xcode bundle entries in about 0.90 seconds with approximately 196 MB peak benchmark-process memory; this is a warm local measurement, not a guarantee for other disks. The treemap is limited to 6,000 tiles and 64 nested layout levels, grouping smaller items when necessary.
 - File-type categories currently use filename extensions. They are a visual guide, not content inspection.
 - `MockData.swift` preserves the original prototype fixture and is no longer used by the application.
+
+## Indexing performance
+
+The GUI and administrator helper use bounded Swift concurrency, with native Darwin
+metadata traversal and one final sorting pass. On this Apple-silicon Mac, alternating
+warm Xcode scans improved from 2.53–2.59 seconds to 0.90 seconds, with matching
+per-entry metadata and similar ~196 MB peak benchmark-process memory. Results vary
+with disk, tree shape, filesystem cache and permissions; network/cloud volumes have
+not been benchmarked. See [experiments and tradeoffs](plans/indexing-performance.md).
+
+```sh
+scripts/benchmark-scanner.sh /path/to/readable/stable/folder
+```
 
 ## Tests
 
