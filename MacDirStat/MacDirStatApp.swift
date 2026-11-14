@@ -13,5 +13,7 @@ struct MacDirStatApp: App {
         WindowGroup {
             ContentView()
         }
+        .defaultSize(width: 1250, height: 780)
+        .commands { DiskCommands() }
     }
 }
